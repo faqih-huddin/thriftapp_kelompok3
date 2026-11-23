@@ -1,0 +1,103 @@
+{
+  "info": {
+    "name": "ThriftApp API — Milestone Pertemuan 9",
+    "description": "Pengujian endpoint katalog dan keranjang. Jalankan request secara berurutan agar cookie session dan token CSRF tersimpan.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost/thriftapp_php"},
+    {"key": "csrf_token", "value": ""},
+    {"key": "product_id", "value": "1"},
+    {"key": "cart_item_id", "value": "1"}
+  ],
+  "item": [
+    {
+      "name": "1. Buka Form Login (ambil CSRF)",
+      "request": {"method": "GET", "header": [], "url": "{{base_url}}/index.php?r=login"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const html = pm.response.text();",
+        "const match = html.match(/name=\"_csrf\" value=\"([^\"]+)\"/);",
+        "if (match) pm.collectionVariables.set('csrf_token', match[1]);",
+        "pm.test('Form login mengembalikan token CSRF', function () { pm.expect(match).to.not.equal(null); });"
+      ]}}]
+    },
+    {
+      "name": "2. Login Pembeli Demo",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+        "body": {"mode": "urlencoded", "urlencoded": [
+          {"key": "_csrf", "value": "{{csrf_token}}"},
+          {"key": "action", "value": "login"},
+          {"key": "back_route", "value": "login"},
+          {"key": "email", "value": "rani@contoh.id"},
+          {"key": "password", "value": "password"}
+        ]},
+        "url": "{{base_url}}/index.php?r=login"
+      },
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.test('Login mengembalikan respons', function () { pm.expect(pm.response.code).to.be.oneOf([200, 302]); });"
+      ]}}]
+    },
+    {
+      "name": "3. Ambil Produk",
+      "request": {"method": "GET", "header": [{"key": "Accept", "value": "application/json"}], "url": "{{base_url}}/api/products?per_page=12"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.test('GET products berhasil', function () { pm.response.to.have.status(200); pm.expect(json.success).to.eql(true); });",
+        "const firstActive = (json.data?.items || []).find(item => item.status === 'active');",
+        "if (firstActive) pm.collectionVariables.set('product_id', String(firstActive.id));"
+      ]}}]
+    },
+    {
+      "name": "4. Ambil Session & CSRF",
+      "request": {"method": "GET", "header": [{"key": "Accept", "value": "application/json"}], "url": "{{base_url}}/api/session"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.test('Session pembeli aktif', function () { pm.response.to.have.status(200); pm.expect(json.data.authenticated).to.eql(true); });",
+        "pm.collectionVariables.set('csrf_token', json.data.csrf_token);"
+      ]}}]
+    },
+    {
+      "name": "5. Tambahkan Produk ke Keranjang",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Accept", "value": "application/json"},
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-CSRF-Token", "value": "{{csrf_token}}"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"product_id\": {{product_id}}\n}", "options": {"raw": {"language": "json"}}},
+        "url": "{{base_url}}/api/cart/items"
+      },
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.test('Produk ditambahkan atau sudah ada', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); pm.expect(json.success).to.eql(true); });"
+      ]}}]
+    },
+    {
+      "name": "6. Lihat Keranjang",
+      "request": {"method": "GET", "header": [{"key": "Accept", "value": "application/json"}], "url": "{{base_url}}/api/cart"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.test('Keranjang dapat dibaca', function () { pm.response.to.have.status(200); pm.expect(json.success).to.eql(true); });",
+        "if (json.data?.items?.length) pm.collectionVariables.set('cart_item_id', String(json.data.items[0].cart_item_id));"
+      ]}}]
+    },
+    {
+      "name": "7. Hapus Item Keranjang",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {"key": "Accept", "value": "application/json"},
+          {"key": "X-CSRF-Token", "value": "{{csrf_token}}"}
+        ],
+        "url": "{{base_url}}/api/cart/items/{{cart_item_id}}"
+      },
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.test('Item keranjang berhasil dihapus', function () { pm.response.to.have.status(200); pm.expect(json.success).to.eql(true); });"
+      ]}}]
+    }
+  ]
+}
